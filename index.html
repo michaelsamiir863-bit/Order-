@@ -81,7 +81,7 @@ tr.done{
   padding:20px;
   border-radius:15px;
   width:90%;
-  max-width:420px;
+  max-width:450px;
 }
 .modal input,.modal select{
   width:100%;
@@ -138,6 +138,7 @@ tr.done{
 <th>كود الصنف</th>
 <th>الكمية</th>
 <th>الفرع / الشركة</th>
+<th>الملاحظات</th>
 <th>التاريخ</th>
 <th>الحالة</th>
 <th>إجراء</th>
@@ -159,6 +160,7 @@ tr.done{
 </select>
 <select id="c_branch"></select>
 <input id="c_company" placeholder="اسم الشركة / المخزن" style="display:none">
+<input id="c_notes" placeholder="ملاحظات">
 <button onclick="saveCustomer()">حفظ</button>
 <button onclick="closeAll()">إلغاء</button>
 </div>
@@ -172,6 +174,7 @@ tr.done{
 <input id="b_code" placeholder="كود الصنف">
 <input id="b_qty" type="number" placeholder="الكمية">
 <select id="b_branch"></select>
+<input id="b_notes" placeholder="ملاحظات">
 <button onclick="saveBranch()">حفظ</button>
 <button onclick="closeAll()">إلغاء</button>
 </div>
@@ -208,11 +211,11 @@ function closeAll(){document.querySelectorAll('.modal').forEach(m=>m.style.displ
 
 /* تنظيف الحقول */
 function clearCustomer(){
- c_item.value=""; c_qty.value=""; c_company.value="";
+ c_item.value=""; c_qty.value=""; c_company.value=""; c_notes.value="";
  c_type.value="branch"; toggleExternal();
 }
 function clearBranch(){
- b_item.value=""; b_code.value=""; b_qty.value="";
+ b_item.value=""; b_code.value=""; b_qty.value=""; b_notes.value="";
 }
 
 /* طلب خارجي */
@@ -225,24 +228,26 @@ function toggleExternal(){
 /* حفظ الطلبات */
 function saveCustomer(){
  db.ref("orders/customer").push({
-  item:c_item.value,
-  qty:c_qty.value,
-  branch:c_branch.value,
-  company:c_company.value,
-  time:Date.now(),
-  status:"waiting"
+  item: c_item.value,
+  qty: c_qty.value,
+  branch: c_branch.value,
+  company: c_company.value,
+  notes: c_notes.value,
+  time: Date.now(),
+  status: "waiting"
  });
  closeAll(); loadOrders();
 }
 
 function saveBranch(){
  db.ref("orders/branch").push({
-  item:b_item.value,
-  code:b_code.value,
-  qty:b_qty.value,
-  branch:b_branch.value,
-  time:Date.now(),
-  status:"waiting"
+  item: b_item.value,
+  code: b_code.value,
+  qty: b_qty.value,
+  branch: b_branch.value,
+  notes: b_notes.value,
+  time: Date.now(),
+  status: "waiting"
  });
  closeAll(); loadOrders();
 }
@@ -267,6 +272,7 @@ function loadOrders(){
       <td>${d.code||"-"}</td>
       <td>${d.qty}</td>
       <td>${d.branch||d.company||"-"}</td>
+      <td>${d.notes||"-"}</td>
       <td>${date}</td>
       <td class="${d.status==='done'?'status-done':'status-wait'}">
         ${d.status==='done'?'تم التنفيذ':'قيد الانتظار'}
@@ -278,7 +284,7 @@ function loadOrders(){
         }
         ${t.key==="branch"
           ? `<br><button class="small whats-btn"
-              onclick="reportWhatsApp('${d.branch}','${d.code}')">
+              onclick="reportWhatsApp('${d.branch}','${d.code}','${d.notes||""}')">
               واتساب
             </button>`
           : ''
@@ -297,8 +303,9 @@ function setDone(type,id){
 }
 
 /* إبلاغ واتساب */
-function reportWhatsApp(branch,code){
- const text=`هبعت اخد كود ${code}\nمن فرع ${branch}`;
+function reportWhatsApp(branch,code,notes){
+ let text=`هبعت اخد كود ${code}\nمن فرع ${branch}`;
+ if(notes) text += `\nملاحظات: ${notes}`;
  const url="https://wa.me/?text="+encodeURIComponent(text);
  window.open(url,"_blank");
 }
@@ -347,4 +354,5 @@ loadOrders();
 
 </body>
 </html>
+
 
