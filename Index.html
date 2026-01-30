@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<title>إدارة الطلبات</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- Firebase -->
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-database-compat.js"></script>
+
+<style>
+body{
+  margin:0;
+  font-family:'Cairo',sans-serif;
+  background:#f4f6f9;
+}
+header{
+  background:linear-gradient(135deg,#0f2027,#203a43,#2c5364);
+  color:#fff;
+  padding:20px;
+  text-align:center;
+}
+.actions,.filters{
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  justify-content:center;
+  margin:15px;
+}
+button{
+  padding:10px 20px;
+  border:none;
+  border-radius:8px;
+  cursor:pointer;
+  background:#2c5364;
+  color:#fff;
+}
+.print{background:#00695c}
+.container{padding:20px}
+
+table{
+  width:100%;
+  border-collapse:collapse;
+  background:#fff;
+  border-radius:12px;
+  overflow:hidden;
+  box-shadow:0 6px 15px rgba(0,0,0,.08);
+}
+th,td{
+  padding:10px;
+  border-bottom:1px solid #eee;
+  text-align:center;
+}
+th{background:#f1f3f6}
+
+tr.done{
+  background:#e8f5e9;
+}
+.status-wait{color:#ff9800;font-weight:bold}
+.status-done{color:#2e7d32;font-weight:bold}
+
+.small{
+  padding:6px 12px;
+  font-size:13px;
+  border-radius:6px;
+}
+.done-btn{background:#2e7d32}
+.whats-btn{background:#25D366}
+
+.modal{
+  position:fixed;
+  inset:0;
+  background:rgba(0,0,0,.6);
+  display:none;
+  align-items:center;
+  justify-content:center;
+}
+.modal-content{
+  background:#fff;
+  padding:20px;
+  border-radius:15px;
+  width:90%;
+  max-width:420px;
+}
+.modal input,.modal select{
+  width:100%;
+  padding:10px;
+  margin-bottom:10px;
+  border-radius:8px;
+  border:1px solid #ccc;
+}
+</style>
+</head>
+
+<body>
+
+<header>
+<h2>نظام إدارة الطلبات</h2>
+<p>طلبات العملاء • أذون الفروع</p>
+</header>
+
+<div class="actions">
+<button onclick="openCustomer()">➕ طلب عميل</button>
+<button onclick="openBranch()">📦 إذن من فرع</button>
+<button class="print" onclick="printBranches()">🖨️ طباعة أذون الفروع</button>
+</div>
+
+<div class="filters">
+<select id="fType">
+  <option value="">كل الأنواع</option>
+  <option value="customer">طلبات العملاء</option>
+  <option value="branch">أذون الفروع</option>
+</select>
+
+<select id="fBranch">
+  <option value="">كل الفروع</option>
+</select>
+
+<select id="fStatus">
+  <option value="">كل الحالات</option>
+  <option value="waiting">قيد الانتظار</option>
+  <option value="done">تم التنفيذ</option>
+</select>
+
+<input type="date" id="fromDate">
+<input type="date" id="toDate">
+
+<button onclick="loadOrders()">تطبيق الفلاتر</button>
+</div>
+
+<div class="container">
+<table>
+<thead>
+<tr>
+<th>النوع</th>
+<th>اسم الصنف</th>
+<th>كود الصنف</th>
+<th>الكمية</th>
+<th>الفرع / الشركة</th>
+<th>التاريخ</th>
+<th>الحالة</th>
+<th>إجراء</th>
+</tr>
+</thead>
+<tbody id="orders"></tbody>
+</table>
+</div>
+
+<!-- طلب عميل -->
+<div class="modal" id="customerModal">
+<div class="modal-content">
+<h3>طلب عميل</h3>
+<input id="c_item" placeholder="اسم الصنف">
+<input id="c_qty" type="number" placeholder="الكمية">
+<select id="c_type" onchange="toggleExternal()">
+  <option value="branch">من فرع</option>
+  <option value="external">طلب خارجي</option>
+</select>
+<select id="c_branch"></select>
+<input id="c_company" placeholder="اسم الشركة / المخزن" style="display:none">
+<button onclick="saveCustomer()">حفظ</button>
+<button onclick="closeAll()">إلغاء</button>
+</div>
+</div>
+
+<!-- إذن فرع -->
+<div class="modal" id="branchModal">
+<div class="modal-content">
+<h3>إذن من فرع</h3>
+<input id="b_item" placeholder="اسم الصنف">
+<input id="b_code" placeholder="كود الصنف">
+<input id="b_qty" type="number" placeholder="الكمية">
+<select id="b_branch"></select>
+<button onclick="saveBranch()">حفظ</button>
+<button onclick="closeAll()">إلغاء</button>
+</div>
+</div>
+
+<script>
+/* Firebase Config */
+const firebaseConfig = {
+ apiKey: "AIzaSyAbC0MGRDan_3VeqO1B3n0aK-22p2cyAf4",
+ authDomain: "tasks-e9f9d.firebaseapp.com",
+ databaseURL: "https://tasks-e9f9d-default-rtdb.firebaseio.com",
+ projectId: "tasks-e9f9d"
+};
+firebase.initializeApp(firebaseConfig);
+const db = firebase.database();
+
+/* تحميل الفروع */
+function loadBranches(){
+ db.ref("branches").once("value",snap=>{
+   const selects=[fBranch,c_branch,b_branch];
+   selects.forEach(s=>s.innerHTML='<option value="">اختر الفرع</option>');
+   snap.forEach(b=>{
+     selects.forEach(s=>{
+       s.innerHTML+=`<option>${b.val().name}</option>`;
+     });
+   });
+ });
+}
+
+/* فتح النوافذ */
+function openCustomer(){clearCustomer();customerModal.style.display="flex"}
+function openBranch(){clearBranch();branchModal.style.display="flex"}
+function closeAll(){document.querySelectorAll('.modal').forEach(m=>m.style.display="none")}
+
+/* تنظيف الحقول */
+function clearCustomer(){
+ c_item.value=""; c_qty.value=""; c_company.value="";
+ c_type.value="branch"; toggleExternal();
+}
+function clearBranch(){
+ b_item.value=""; b_code.value=""; b_qty.value="";
+}
+
+/* طلب خارجي */
+function toggleExternal(){
+ const ext=c_type.value==="external";
+ c_branch.style.display=ext?"none":"block";
+ c_company.style.display=ext?"block":"none";
+}
+
+/* حفظ الطلبات */
+function saveCustomer(){
+ db.ref("orders/customer").push({
+  item:c_item.value,
+  qty:c_qty.value,
+  branch:c_branch.value,
+  company:c_company.value,
+  time:Date.now(),
+  status:"waiting"
+ });
+ closeAll(); loadOrders();
+}
+
+function saveBranch(){
+ db.ref("orders/branch").push({
+  item:b_item.value,
+  code:b_code.value,
+  qty:b_qty.value,
+  branch:b_branch.value,
+  time:Date.now(),
+  status:"waiting"
+ });
+ closeAll(); loadOrders();
+}
+
+/* تحميل الجدول */
+function loadOrders(){
+ orders.innerHTML="";
+ db.ref("orders").once("value",snap=>{
+  snap.forEach(t=>{
+   if(fType.value && fType.value!==t.key) return;
+   t.forEach(o=>{
+    const d=o.val();
+    if(fBranch.value && d.branch!==fBranch.value) return;
+    if(fStatus.value && d.status!==fStatus.value) return;
+
+    const date=new Date(d.time).toLocaleString();
+
+    orders.innerHTML+=`
+    <tr class="${d.status==='done'?'done':''}">
+      <td>${t.key==="branch"?"إذن فرع":"طلب عميل"}</td>
+      <td>${d.item}</td>
+      <td>${d.code||"-"}</td>
+      <td>${d.qty}</td>
+      <td>${d.branch||d.company||"-"}</td>
+      <td>${date}</td>
+      <td class="${d.status==='done'?'status-done':'status-wait'}">
+        ${d.status==='done'?'تم التنفيذ':'قيد الانتظار'}
+      </td>
+      <td>
+        ${d.status==='waiting'
+          ? `<button class="small done-btn" onclick="setDone('${t.key}','${o.key}')">تم</button>`
+          : ''
+        }
+        ${t.key==="branch"
+          ? `<br><button class="small whats-btn"
+              onclick="reportWhatsApp('${d.branch}','${d.code}')">
+              واتساب
+            </button>`
+          : ''
+        }
+      </td>
+    </tr>`;
+   });
+  });
+ });
+}
+
+/* تغيير الحالة */
+function setDone(type,id){
+ db.ref(`orders/${type}/${id}/status`).set("done");
+ loadOrders();
+}
+
+/* إبلاغ واتساب */
+function reportWhatsApp(branch,code){
+ const text=`هبعت اخد كود ${code}\nمن فرع ${branch}`;
+ const url="https://wa.me/?text="+encodeURIComponent(text);
+ window.open(url,"_blank");
+}
+
+/* الطباعة */
+function printBranches(){
+ db.ref("orders/branch").once("value",snap=>{
+  let rows="";
+  snap.forEach(o=>{
+   if(o.val().status!=="waiting") return;
+   rows+=`
+    <tr>
+      <td>${o.val().branch}</td>
+      <td>${o.val().code}</td>
+      <td>${o.val().qty}</td>
+    </tr>`;
+  });
+
+  const w=window.open("","","width=300");
+  w.document.write(`
+  <style>
+    body{font-family:monospace;text-align:center}
+    table{width:100%;border-collapse:collapse}
+    th,td{border:1px solid #000;padding:6px;text-align:center}
+  </style>
+
+  <h4>إذن إلى فرع نعمة الله</h4>
+
+  <table>
+    <tr>
+      <th>الفرع</th>
+      <th>الكود</th>
+      <th>الكمية</th>
+    </tr>
+    ${rows}
+  </table>
+  `);
+  w.print();
+ });
+}
+
+/* تشغيل */
+loadBranches();
+loadOrders();
+</script>
+
+</body>
+</html>
+
